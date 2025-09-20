@@ -24,3 +24,7 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Utilities for Settings drawer scrolling behavior */
+.overscroll-contain { overscroll-behavior: contain; }
+.ios-smooth-scroll { -webkit-overflow-scrolling: touch; }
