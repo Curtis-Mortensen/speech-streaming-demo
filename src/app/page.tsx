@@ -51,6 +51,8 @@ export default function Home() {
     sent: false,
     thinking: false,
     responding: false,
+    recording: false,
+    saved: false,
   });
 
   // Versioned settings state
@@ -195,19 +197,9 @@ export default function Home() {
     };
   }, []);
 
-  // Start multi-stage status on send initiation (covers Enter key and button click)
-  setStatus({ sending: true, sent: false, thinking: true, responding: false });
-  
-  // Helpers
-  /*   I removed this section of code because it was unclear what it did when merging with the new functionality. 
-  If something breaks, add it back under ensureChatId
-    const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
 
-    const currentInputText = inputText;
-    setInputText('');
-    setLoading(true);
-  */ 
+  
+
   const ensureChatId = () => {
     let chatId = currentChatId;
     let newChat = false;
@@ -245,6 +237,8 @@ export default function Home() {
   // Unified send (text - either from text mode or from STT transcript)
   const sendTextToAI = async (userText: string) => {
     if (!userText.trim()) return;
+
+    setStatus({ sending: true, sent: false, thinking: true, responding: false });
 
     setLoading(true);
     const { chatId, newChat } = ensureChatId();
@@ -374,6 +368,7 @@ export default function Home() {
 
       // Immediate UI update for responsiveness
       setIsRecording(true);
+      setStatus(s => ({ ...s, recording: true, saved: false }));
       setRecordingStartedAt(Date.now());
       setStatusMessage('Recording started');
 
@@ -402,6 +397,7 @@ export default function Home() {
 
     // Immediate UI update
     setIsRecording(false);
+    setStatus(s => ({ ...s, recording: false, saved: true }));
     setStatusMessage('Stopping…');
 
     // Wait for MediaRecorder to fully stop so the final dataavailable chunk is captured
@@ -470,6 +466,7 @@ export default function Home() {
       setLastRecordingUrl(null);
       setLastTranscript(null);
       setStatusMessage('Re-recording…');
+      setStatus(s => ({ ...s, saved: false }));
       await startRecording();
     } else {
       await startRecording();
@@ -496,6 +493,7 @@ export default function Home() {
       if (recordedBlob) {
         // Transcribe first
         setStatusMessage('Transcribing…');
+        setStatus(s => ({ ...s, sending: true, saved: false }));
         try {
           const fd = new FormData();
           const blobType = recordedBlob.type || '';
@@ -570,22 +568,7 @@ export default function Home() {
     return `${m}:${s}`;
   }, [elapsedMs]);
 
-  // Compact control bar moved to [src/app/components/ControlBar.tsx](src/app/components/ControlBar.tsx)
 
-  const togglePlayPause = (audioUrl: string) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (isPlaying && currentPlayingUrl === audioUrl) {
-      // Pause current; let audio events update speaking/playing state
-      audio.pause();
-    } else {
-      // Switch source and play; rely on events to reflect state
-      audio.src = audioUrl;
-      audio.play();
-      setCurrentPlayingUrl(audioUrl);
-    }
-  };
 
   // Audio event wiring: single source of truth for speaking/playing status
   // this was created on the main branch without voice features - status indicators will need to be updated.
@@ -683,7 +666,8 @@ export default function Home() {
       if (!ttsResponse.ok) {
         throw new Error('Failed to re-synthesize audio');
       }
-      const { url } = await ttsResponse.json();
+      const blob = await ttsResponse.blob();
+      const url = URL.createObjectURL(blob);
 
       setCurrentMessages(prev =>
         prev.map((m, i) => (i === messageIndex ? { ...m, audioUrl: url } : m))
@@ -760,14 +744,22 @@ export default function Home() {
 
 
         {/* Transcript toggle button below mic and above input */}
-        {!showTranscript && (
+        {!showTranscript ? (
           <button
             className="mb-4 px-6 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
             onClick={() => setShowTranscript(true)}
           >
             View Transcript
           </button>
+        ) : (
+          <button
+            className="mb-4 px-6 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
+            onClick={() => setShowTranscript(false)}
+          >
+            Hide Transcript
+          </button>
         )}
+
 
         {/* Animated transcript container */}
         <div
@@ -819,43 +811,30 @@ export default function Home() {
             ))}
           </div>
         </div>
-        
-        {showTranscript && (
-          <button
-            className="mb-4 px-6 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
-            onClick={() => setShowTranscript(false)}
-          >
-            Hide Transcript
-          </button>
-          
-          {/* New compact voice-first control bar at bottom */}
-              <ControlBar
-                textModeEnabled={textModeEnabled}
-                textInput={textInput}
-                setTextInput={setTextInput}
-                handleToggleTextMode={handleToggleTextMode}
-                handleTextKeyDown={handleTextKeyDown}
-                isRecording={isRecording}
-                elapsedLabel={elapsedLabel}
-                onMicClick={onMicClick}
-                canSendFromControls={canSendFromControls}
-                loading={loading}
-                onSendFromControls={onSendFromControls}
-                statusMessage={statusMessage}
-              />
-        )}
-        
-        {/* Input */}
-        <textarea
-          className="w-full max-w-lg mt-2 p-4 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          rows={showTranscript ? 3 : 5}
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+
+
+        <ControlBar
+          textModeEnabled={textModeEnabled}
+          textInput={textInput}
+          setTextInput={setTextInput}
+          handleToggleTextMode={handleToggleTextMode}
+          handleTextKeyDown={handleTextKeyDown}
+          isRecording={isRecording}
+          elapsedLabel={elapsedLabel}
+          onMicClick={onMicClick}
+          canSendFromControls={canSendFromControls}
+          loading={loading}
+          onSendFromControls={onSendFromControls}
+          statusMessage={statusMessage}
         />
 
-        {/* Status badges */}
         <div className="w-full max-w-lg mt-2 flex flex-wrap items-center gap-2 text-xs">
+          <span className={`px-2 py-1 rounded ${isRecording ? 'bg-red-700 animate-pulse' : 'bg-gray-700'}`}>
+            Recording
+          </span>
+          <span className={`px-2 py-1 rounded ${recordedBlob ? 'bg-yellow-700' : 'bg-gray-700'}`}>
+            Saved
+          </span>
           <span className={`px-2 py-1 rounded ${status.sending ? 'bg-blue-700' : 'bg-gray-700'} `}>
             {status.sending ? 'Sending' : 'Sending'}
           </span>
@@ -869,17 +848,6 @@ export default function Home() {
             Responding
           </span>
         </div>
-
-        {/* Send */}
-        <button
-          className="mt-3 px-6 py-3 bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-500"
-          onClick={handleSendMessage}
-          disabled={loading || status.sending || status.thinking}
-        >
-          {loading || status.sending ? 'Sending...' : 'Send'}
-        </button>
-
-        <audio ref={audioRef} className="hidden" />
       </div>
 
       {/* Settings Drawer */}
