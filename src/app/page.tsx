@@ -462,7 +462,7 @@ export default function Home() {
       setLastRecordingUrl(null);
       setLastTranscript(null);
       setStatusMessage('Re-recording…');
-      setStatus(s => ({ ...s, saved: false }));
+      setStatus(s => ({ ...s, saved: false, recording: false }));
       await startRecording();
     } else {
       await startRecording();
@@ -629,7 +629,7 @@ export default function Home() {
   // Reset 'sent' when both thinking and responding are false
   useEffect(() => {
     if (status.sent && !status.thinking && !status.responding) {
-      setStatus(s => ({ ...s, sent: false }));
+      setStatus(s => ({ ...s, sent: false, recording: false, saved: false }));
     }
   }, [status.sent, status.thinking, status.responding]);
   
