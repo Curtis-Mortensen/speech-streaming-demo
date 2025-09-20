@@ -183,7 +183,7 @@ export default function Settings(props: SettingsProps) {
         <div>
           <label className="block mb-2">System Prompt</label>
           <textarea
-            className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-100 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             rows={4}
             value={settings.systemPrompt}
             onChange={(e) => nextSettings({ systemPrompt: e.target.value })}
@@ -198,13 +198,13 @@ export default function Settings(props: SettingsProps) {
           <div className="flex gap-2 mb-2">
             <input
               type="text"
-              className="flex-1 p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500"
+              className="flex-1 p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-100 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500"
               placeholder="Filter voices..."
               value={voiceFilter}
               onChange={(e) => setVoiceFilter(e.target.value)}
             />
             <select
-              className="p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+              className="p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-100 dark:text-slate-100"
               value={selectedVoiceId}
               onChange={(e) => {
                 const id = e.target.value;
@@ -223,7 +223,7 @@ export default function Settings(props: SettingsProps) {
           <label className="block mb-2">Custom Voice ID</label>
           <input
             type="text"
-            className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500"
+            className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-100 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500"
             placeholder="Enter exact voice ID to override selection"
             value={customVoiceText}
             onChange={(e) => {
@@ -307,7 +307,7 @@ export default function Settings(props: SettingsProps) {
             <div>
               <label className="block mb-2">Emotion</label>
               <select
-                className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+                className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-100 dark:text-slate-100"
                 value={settings.emotion ?? 'auto'}
                 onChange={(e) => nextSettings({ emotion: e.target.value as NonNullable<SettingsSpecV1['emotion']> })}
               >
@@ -334,7 +334,7 @@ export default function Settings(props: SettingsProps) {
               <label className="block mb-2">Language Boost</label>
               <input
                 list="languageBoostOptions"
-                className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500"
+                className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-100 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500"
                 value={settings.languageBoost ?? ''}
                 placeholder="Choose common or type your own (e.g., English)"
                 onChange={(e) => nextSettings({ languageBoost: e.target.value })}
@@ -349,7 +349,7 @@ export default function Settings(props: SettingsProps) {
             <div>
               <label className="block mb-2">Sample Rate</label>
               <select
-                className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+                className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-100 dark:text-slate-100"
                 value={settings.sampleRate}
                 onChange={(e) => nextSettings({ sampleRate: Number(e.target.value) as SettingsSpecV1['sampleRate'] })}
               >
@@ -361,7 +361,7 @@ export default function Settings(props: SettingsProps) {
             <div>
               <label className="block mb-2">Bitrate</label>
               <select
-                className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+                className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-100 dark:text-slate-100"
                 value={settings.bitrate}
                 onChange={(e) => nextSettings({ bitrate: Number(e.target.value) as SettingsSpecV1['bitrate'] })}
               >
@@ -376,7 +376,7 @@ export default function Settings(props: SettingsProps) {
             <div>
               <label className="block mb-2">Channel</label>
               <select
-                className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+                className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-100 dark:text-slate-100"
                 value={settings.channel}
                 onChange={(e) => nextSettings({ channel: e.target.value as SettingsSpecV1['channel'] })}
               >
@@ -388,7 +388,7 @@ export default function Settings(props: SettingsProps) {
             <div>
               <label className="block mb-2">TTS Model</label>
               <select
-                className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+                className="w-full p-2 bg-gray-700 dark:bg-slate-800 border border-gray-600 dark:border-slate-700 rounded-lg text-slate-100 dark:text-slate-100"
                 value={settings.model}
                 onChange={(e) => nextSettings({ model: e.target.value as SettingsSpecV1['model'] })}
               >
@@ -441,10 +441,10 @@ export default function Settings(props: SettingsProps) {
           role="dialog"
           aria-modal="true"
           aria-labelledby="settings-drawer-title"
-          className={`fixed inset-y-0 right-0 bg-white dark:bg-slate-900 dark:text-slate-100 shadow-xl z-50 w-screen sm:w-80 lg:w-96 h-full transition-transform duration-300 will-change-transform focus:outline-none motion-reduce:transition-none ${show ? 'translate-x-0 ease-out' : 'translate-x-full ease-in'}`}
+          className={`fixed inset-y-0 right-0 bg-gray-800 dark:bg-slate-800 dark:text-slate-100 shadow-xl z-50 w-screen sm:w-80 lg:w-96 h-full transition-transform duration-300 will-change-transform focus:outline-none motion-reduce:transition-none ${show ? 'translate-x-0 ease-out' : 'translate-x-full ease-in'}`}
         >
           {/* Header */}
-          <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between">
+          <div className="sticky top-0 bg-gray-800 dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between">
             <h2
               id="settings-drawer-title"
               ref={headingRef}
@@ -463,7 +463,7 @@ export default function Settings(props: SettingsProps) {
           </div>
 
           {/* Scrollable content */}
-          <div className="h-[calc(100%-3rem)] overflow-y-auto overscroll-contain ios-smooth-scroll px-4 py-4 text-slate-900 dark:text-slate-100">
+          <div className="h-[calc(100%-3rem)] overflow-y-auto overscroll-contain ios-smooth-scroll px-4 py-4 text-slate-100 dark:text-slate-100">
             {content}
           </div>
         </aside>

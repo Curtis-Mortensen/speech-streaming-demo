@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Settings from './components/Settings';
 import { SettingsSpecV1, DEFAULT_SETTINGS_V1, clampSettingsToSpec } from '../types/settings';
+import ControlBar from './components/ControlBar';
 
 // Helper: format chat title as "HH:mm DD-MM-YY"
 function formatChatTitle(date: Date) {
@@ -22,15 +23,17 @@ interface Message {
 }
 
 interface Chat {
-    id: string;
-    title: string;
-    messages: Message[];
+  id: string;
+  title: string;
+  messages: Message[];
 }
+type MediaRecorderOrNull = MediaRecorder | null;
 
 export default function Home() {
+  // Existing chat state
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-  const [inputText, setInputText] = useState('');
+  const [inputText, setInputText] = useState(''); // legacy textarea (kept)
   const [loading, setLoading] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
   const [currentMessages, setCurrentMessages] = useState<Message[]>([]);
@@ -48,64 +51,62 @@ export default function Home() {
     sent: false,
     thinking: false,
     responding: false,
+    recording: false,
+    saved: false,
   });
 
   // Versioned settings state
   const [settings, setSettings] = useState<SettingsSpecV1>(DEFAULT_SETTINGS_V1);
 
+  // New voice-first controls state
+  const [textModeEnabled, setTextModeEnabled] = useState(false); // collapsed by default (voice-first)
+  const [textInput, setTextInput] = useState(''); // separate text input for the compact bar
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorderOrNull>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+  const [lastTranscript, setLastTranscript] = useState<string | null>(null);
+  const [lastRecordingUrl, setLastRecordingUrl] = useState<string | null>(null);
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null); // aria-live feedback
+
+  // New decoupled recording state
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [recordedDurationMs, setRecordedDurationMs] = useState<number | null>(null);
+
   const audioRef = useRef<HTMLAudioElement>(null);
+
+  // Timer display for recording
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    if (!isRecording || !recordingStartedAt) return;
+    let raf: number;
+    let interval: number | undefined;
+    const update = () => {
+      setElapsedMs(Date.now() - recordingStartedAt);
+      raf = requestAnimationFrame(update);
+    };
+    // Respect reduced motion: update less frequently
+    const isReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (isReduced) {
+      interval = window.setInterval(() => setElapsedMs(Date.now() - recordingStartedAt), 1000);
+    } else {
+      raf = requestAnimationFrame(update);
+    }
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      if (interval) clearInterval(interval);
+    };
+  }, [isRecording, recordingStartedAt]);
 
   // Load chats (with one-time title migration for legacy "New Chat"/empty titles)
   useEffect(() => {
     const savedChats = localStorage.getItem('chats');
     if (savedChats) {
       const parsedChats = JSON.parse(savedChats) as Chat[];
-
-      // Migration: normalize title if it's "New Chat", empty, or whitespace
-      const migratedChats = Array.isArray(parsedChats)
-        ? parsedChats.map((chat) => {
-            const rawTitle = typeof chat.title === 'string' ? chat.title : '';
-            const needsMigration =
-              rawTitle.trim().length === 0 || rawTitle === 'New Chat';
-
-            if (!needsMigration) return chat;
-
-            // Try to derive time from ID if it looks like a millisecond timestamp
-            let derivedDate: Date | null = null;
-
-            const tryNumber = (val: unknown) => {
-              const num = typeof val === 'number' ? val : Number(val);
-              return Number.isFinite(num) && num > 0 ? num : null;
-            };
-
-            // Prefer chat.id when it's a millis timestamp (string or number)
-            const idAsMillis = tryNumber(chat.id);
-            if (idAsMillis) {
-              derivedDate = new Date(idAsMillis);
-            }
-
-            // Else, if a firstMessageTimestamp exists (legacy), derive from that
-            if (!derivedDate) {
-              const firstTs = (chat as any)?.firstMessageTimestamp;
-              const firstAsMillis = tryNumber(firstTs);
-              if (firstAsMillis) {
-                derivedDate = new Date(firstAsMillis);
-              }
-            }
-
-            // Fallback to "now" if nothing else available
-            const finalDate = derivedDate ?? new Date();
-
-            return {
-              ...chat,
-              title: formatChatTitle(finalDate),
-            };
-          })
-        : parsedChats;
-
-      setChats(migratedChats);
-      if (migratedChats.length > 0) {
-        setCurrentChatId(migratedChats[0].id);
+      setChats(parsedChats);
+      if (parsedChats.length > 0) {
+        setCurrentChatId(parsedChats[0].id);
       }
     }
   }, []);
@@ -126,7 +127,7 @@ export default function Home() {
 
   // Current messages per selected chat
   useEffect(() => {
-    const chat = chats.find(c => c.id === currentChatId);
+    const chat = chats.find((c) => c.id === currentChatId);
     setCurrentMessages(chat ? chat.messages : []);
   }, [currentChatId, chats]);
 
@@ -177,25 +178,74 @@ export default function Home() {
     setSettings(DEFAULT_SETTINGS_V1);
   }, []);
 
-  const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
+  // Cleanup object URLs on unmount
+  useEffect(() => {
+    return () => {
+      if (currentPlayingUrl) URL.revokeObjectURL(currentPlayingUrl);
+      if (lastRecordingUrl) URL.revokeObjectURL(lastRecordingUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    // Start multi-stage status on send initiation (covers Enter key and button click)
-    setStatus({ sending: true, sent: false, thinking: true, responding: false });
+  // Audio element ended listener
+  useEffect(() => {
+    const audio = audioRef.current;
+    const handleEnded = () => setIsPlaying(false);
+    audio?.addEventListener('ended', handleEnded);
+    return () => {
+      audio?.removeEventListener('ended', handleEnded);
+    };
+  }, []);
 
-    const currentInputText = inputText;
-    setInputText('');
-    setLoading(true);
 
+  
+
+  const ensureChatId = () => {
     let chatId = currentChatId;
     let newChat = false;
     if (!chatId) {
-        chatId = Date.now().toString();
-        newChat = true;
+      chatId = Date.now().toString();
+      newChat = true;
     }
+    return { chatId: chatId!, newChat };
+  };
 
-    const userMessage: Message = { text: currentInputText, isUser: true };
-    setCurrentMessages(prev => [...prev, userMessage]);
+  const playAudioUrl = (url: string) => {
+    if (!audioRef.current) return;
+    if (currentPlayingUrl && currentPlayingUrl !== url) {
+      // Best-effort cleanup of previous one if it was an object URL we created
+      // Not revoking here because messages may still need to play it again
+    }
+    audioRef.current.src = url;
+    audioRef.current.play().catch(() => {
+      // Autoplay may be blocked; keep ready for manual play
+    });
+    setCurrentPlayingUrl(url);
+    setIsPlaying(true);
+  };
+
+  const togglePlayPause = (audioUrl: string) => {
+    if (!audioRef.current) return;
+    if (isPlaying && currentPlayingUrl === audioUrl) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      playAudioUrl(audioUrl);
+    }
+  };
+
+  // Unified send (text - either from text mode or from STT transcript)
+  const sendTextToAI = async (userText: string) => {
+    if (!userText.trim()) return;
+
+    setStatus({ sending: true, sent: false, thinking: true, responding: false });
+
+    setLoading(true);
+    const { chatId, newChat } = ensureChatId();
+
+    const userMessage: Message = { text: userText, isUser: true };
+    // Update current message list optimistically
+    setCurrentMessages((prev) => [...prev, userMessage]);
 
     try {
       const chatMessagesForRequest = [
@@ -205,11 +255,11 @@ export default function Home() {
 
       const chatResponse = await fetch('/api/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ messages: chatMessagesForRequest, settings }),
+        // In the merge, I prefered the voice text implimentation but the original was messages:chatMessagesForRequest, settings
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userText, settings }),
       });
+      if (!chatResponse.ok) throw new Error('Failed to get chat response');
 
       if (!chatResponse.ok) {
         throw new Error('Failed to get chat response');
@@ -222,64 +272,306 @@ export default function Home() {
       // AI text received -> thinking false
       setStatus(s => ({ ...s, thinking: false }));
 
+      // TTS for AI response
       const ttsResponse = await fetch('/api/tts', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: aiResponse, settings }),
       });
+      if (!ttsResponse.ok) throw new Error('Failed to synthesize audio');
 
-      if (!ttsResponse.ok) {
-        throw new Error('Failed to synthesize audio');
-      }
+      const blob = await ttsResponse.blob();
+      const url = URL.createObjectURL(blob);
 
-      const { url } = await ttsResponse.json();
-      
       const aiMessage: Message = { text: aiResponse, isUser: false, audioUrl: url };
-      setCurrentMessages(prev => [...prev, aiMessage]);
+      setCurrentMessages((prev) => [...prev, aiMessage]);
 
+      // Persist chat history
       if (newChat) {
         const newChatData: Chat = { id: chatId, title: formatChatTitle(new Date()), messages: [userMessage, aiMessage] };
         setChats(prev => [...prev, newChatData]);
         setCurrentChatId(chatId);
       } else {
-        setChats(prev => prev.map(chat => 
-          chat.id === chatId 
-            ? { ...chat, messages: [...chat.messages, userMessage, aiMessage] } 
-            : chat
-        ));
+        setChats((prev) =>
+          prev.map((chat) =>
+            chat.id === chatId
+              ? { ...chat, messages: [...chat.messages, userMessage, aiMessage] }
+              : chat
+          )
+        );
       }
 
+      // Attempt autoplay
       if (audioRef.current) {
         audioRef.current.src = url;
-        audioRef.current.play();
+        audioRef.current.play().catch(() => {});
         setCurrentPlayingUrl(url);
         // isPlaying and responding will be toggled by the 'playing' event listener
       }
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const togglePlayPause = (audioUrl: string) => {
-    const audio = audioRef.current;
-    if (!audio) return;
+  // Legacy textarea send preserved (calls unified)
+  const handleSendMessage = async () => {
+    if (!inputText.trim()) return;
+    const text = inputText;
+    setInputText('');
+    await sendTextToAI(text);
+  };
 
-    if (isPlaying && currentPlayingUrl === audioUrl) {
-      // Pause current; let audio events update speaking/playing state
-      audio.pause();
-    } else {
-      // Switch source and play; rely on events to reflect state
-      audio.src = audioUrl;
-      audio.play();
-      setCurrentPlayingUrl(audioUrl);
+  // Text Mode handlers
+  const handleToggleTextMode = () => {
+    setTextModeEnabled((v) => !v);
+  };
+  const handleTextKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (textInput.trim()) {
+        const toSend = textInput;
+        setTextInput('');
+        sendTextToAI(toSend);
+      }
+    } else if (e.key === 'Escape') {
+      setTextModeEnabled(false);
     }
   };
 
+  const canUseMime = (mime: string) => {
+    return typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported ? MediaRecorder.isTypeSupported(mime) : false;
+  };
+
+  // Recording
+  const startRecording = async () => {
+    try {
+      // Clear any previous take (fresh recording), but do not revoke lastRecordingUrl here.
+      setRecordedBlob(null);
+      setRecordedDurationMs(null);
+      setLastTranscript(null);
+      setElapsedMs(0);
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      // Prefer webm/opus
+      let mimeType = 'audio/webm;codecs=opus';
+      if (!canUseMime(mimeType)) {
+        mimeType = canUseMime('audio/webm') ? 'audio/webm' : '';
+      }
+
+      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      mediaRecorderRef.current = mr;
+      audioChunksRef.current = [];
+
+      // Immediate UI update for responsiveness
+      setIsRecording(true);
+      setStatus(s => ({ ...s, recording: true, saved: false }));
+      setRecordingStartedAt(Date.now());
+      setStatusMessage('Recording started');
+
+      mr.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+      mr.onstart = () => {
+        // no-op; we already set state above
+      };
+      mr.onstop = () => {
+        setIsRecording(false);
+        // We'll set final status after building the blob in stopRecording
+      };
+      mr.start();
+    } catch (err: any) {
+      console.error('getUserMedia error:', err);
+      setStatusMessage(err?.name === 'NotAllowedError' ? 'Microphone permission denied' : 'Unable to access microphone');
+    }
+  };
+
+  const stopRecording = async () => {
+    const mr = mediaRecorderRef.current;
+    if (!mr) return;
+
+    // Immediate UI update
+    setIsRecording(false);
+    setStatus(s => ({ ...s, recording: false, saved: true }));
+    setStatusMessage('Stopping…');
+
+    // Wait for MediaRecorder to fully stop so the final dataavailable chunk is captured
+    if (mr.state !== 'inactive') {
+      await new Promise<void>((resolve) => {
+        const handleStop = () => resolve();
+        mr.addEventListener('stop', handleStop, { once: true } as any);
+        try {
+          mr.stop();
+        } catch {
+          resolve();
+        }
+      });
+    }
+
+    // Release mic tracks
+    if (streamRef.current) {
+      try {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      } catch {}
+      streamRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+
+    // Build blob
+    const chunks = audioChunksRef.current.slice();
+    audioChunksRef.current = [];
+
+    if (!chunks.length) {
+      setStatusMessage('No audio captured');
+      return;
+    }
+
+    // Determine mime type (fallback to webm)
+    const mime = (mr as any)?.mimeType || 'audio/webm';
+    const blob = new Blob(chunks, { type: mime });
+
+    const url = URL.createObjectURL(blob);
+    setLastRecordingUrl(url);
+
+    // Save recording but DO NOT auto-transcribe
+    setRecordedBlob(blob);
+
+    const startedAt = recordingStartedAt || Date.now();
+    const durMs = Math.max(0, Date.now() - startedAt);
+    setRecordedDurationMs(durMs);
+
+    // Format mm:ss for status
+    const sec = Math.floor(durMs / 1000);
+    const mm = Math.floor(sec / 60).toString().padStart(2, '0');
+    const ss = (sec % 60).toString().padStart(2, '0');
+
+    setStatusMessage(`Recorded ${mm}:${ss}. Click Send to transcribe, or click Record to re-record.`);
+  };
+
+  const onMicClick = async () => {
+    if (isRecording) {
+      await stopRecording();
+    } else if (recordedBlob) {
+      // Re-record requested: discard previous take
+      if (lastRecordingUrl) {
+        try { URL.revokeObjectURL(lastRecordingUrl); } catch {}
+      }
+      setRecordedBlob(null);
+      setRecordedDurationMs(null);
+      setLastRecordingUrl(null);
+      setLastTranscript(null);
+      setStatusMessage('Re-recording…');
+      setStatus(s => ({ ...s, saved: false }));
+      await startRecording();
+    } else {
+      await startRecording();
+    }
+  };
+
+  const canSendFromControls = useMemo(() => {
+    if (textModeEnabled) {
+      return !!textInput.trim();
+    }
+    // Voice-first: allow Send when we have a recorded blob ready,
+    // or when there's a transcript present (edge case).
+    return !!recordedBlob || !!(lastTranscript && lastTranscript.trim());
+  }, [textModeEnabled, textInput, recordedBlob, lastTranscript]);
+
+  const onSendFromControls = async () => {
+    if (!canSendFromControls) return;
+    if (textModeEnabled) {
+      const toSend = textInput.trim();
+      setTextInput('');
+      await sendTextToAI(toSend);
+    } else {
+      // Voice-first flow
+      if (recordedBlob) {
+        // Transcribe first
+        setStatusMessage('Transcribing…');
+        setStatus(s => ({ ...s, sending: true, saved: false }));
+        try {
+          const fd = new FormData();
+          const blobType = recordedBlob.type || '';
+          const filename =
+            blobType.includes('webm') ? 'clip.webm' :
+            blobType.includes('ogg') ? 'clip.ogg' :
+            blobType.includes('wav') ? 'clip.wav' :
+            blobType.includes('m4a') ? 'clip.m4a' :
+            blobType.includes('mp4') ? 'clip.mp4' :
+            'clip.webm';
+          fd.append('audio', recordedBlob, filename);
+
+          const sttRes = await fetch('/api/stt', { method: 'POST', body: fd });
+          if (!sttRes.ok) {
+            const txt = await sttRes.text();
+            throw new Error(`STT failed: ${txt}`);
+          }
+          const data = (await sttRes.json()) as { transcript: string; language?: string; durationMs?: number };
+          const transcript = (data.transcript || '').trim();
+          setLastTranscript(transcript);
+          setStatusMessage('Transcription ready');
+
+          // Append user message with recorded audio (first time, since we didn't append on stop)
+          const userAudioMessage: Message = {
+            text: transcript,
+            isUser: true,
+            audioUrl: lastRecordingUrl || undefined,
+          };
+
+          const { chatId, newChat } = ensureChatId();
+          setCurrentMessages((prev) => [...prev, userAudioMessage]);
+
+          if (newChat) {
+            const newChatData: Chat = { id: chatId, title: transcript || 'Voice note', messages: [userAudioMessage] };
+            setChats((prev) => [...prev, newChatData]);
+            setCurrentChatId(chatId);
+          } else {
+            setChats((prev) =>
+              prev.map((chat) =>
+                chat.id === chatId ? { ...chat, messages: [...chat.messages, userAudioMessage] } : chat
+              )
+            );
+          }
+
+          // Immediately send transcript through chat -> TTS pipeline
+          if (transcript) {
+            await sendTextToAI(transcript);
+          }
+
+          // Optionally clear recordedBlob to prevent duplicate sends; keep URL for playback
+          setRecordedBlob(null);
+        } catch (err) {
+          console.error(err);
+          setStatusMessage('Transcription failed');
+          // Keep recordedBlob so user can retry
+        }
+      } else if (lastTranscript) {
+        const toSend = lastTranscript.trim();
+        setLastTranscript(null);
+        await sendTextToAI(toSend);
+      }
+    }
+  };
+
+  // Small formatter for timer
+  const elapsedLabel = useMemo(() => {
+    const sec = Math.floor(elapsedMs / 1000);
+    const m = Math.floor(sec / 60)
+      .toString()
+      .padStart(2, '0');
+    const s = (sec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  }, [elapsedMs]);
+
+
+
   // Audio event wiring: single source of truth for speaking/playing status
+  // this was created on the main branch without voice features - status indicators will need to be updated.
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -374,7 +666,8 @@ export default function Home() {
       if (!ttsResponse.ok) {
         throw new Error('Failed to re-synthesize audio');
       }
-      const { url } = await ttsResponse.json();
+      const blob = await ttsResponse.blob();
+      const url = URL.createObjectURL(blob);
 
       setCurrentMessages(prev =>
         prev.map((m, i) => (i === messageIndex ? { ...m, audioUrl: url } : m))
@@ -451,14 +744,22 @@ export default function Home() {
 
 
         {/* Transcript toggle button below mic and above input */}
-        {!showTranscript && (
+        {!showTranscript ? (
           <button
             className="mb-4 px-6 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
             onClick={() => setShowTranscript(true)}
           >
             View Transcript
           </button>
+        ) : (
+          <button
+            className="mb-4 px-6 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
+            onClick={() => setShowTranscript(false)}
+          >
+            Hide Transcript
+          </button>
         )}
+
 
         {/* Animated transcript container */}
         <div
@@ -492,10 +793,12 @@ export default function Home() {
                       className="ml-2 p-2 bg-gray-700 rounded-full hover:bg-gray-600"
                     >
                       {isPlaying && currentPlayingUrl === message.audioUrl ? (
+                        // pause icon
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       ) : (
+                        // play icon
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -508,27 +811,30 @@ export default function Home() {
             ))}
           </div>
         </div>
-        
-        {showTranscript && (
-          <button
-            className="mb-4 px-6 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
-            onClick={() => setShowTranscript(false)}
-          >
-            Hide Transcript
-          </button>
-        )}
-        
-        {/* Input */}
-        <textarea
-          className="w-full max-w-lg mt-2 p-4 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          rows={showTranscript ? 3 : 5}
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+
+
+        <ControlBar
+          textModeEnabled={textModeEnabled}
+          textInput={textInput}
+          setTextInput={setTextInput}
+          handleToggleTextMode={handleToggleTextMode}
+          handleTextKeyDown={handleTextKeyDown}
+          isRecording={isRecording}
+          elapsedLabel={elapsedLabel}
+          onMicClick={onMicClick}
+          canSendFromControls={canSendFromControls}
+          loading={loading}
+          onSendFromControls={onSendFromControls}
+          statusMessage={statusMessage}
         />
 
-        {/* Status badges */}
         <div className="w-full max-w-lg mt-2 flex flex-wrap items-center gap-2 text-xs">
+          <span className={`px-2 py-1 rounded ${isRecording ? 'bg-red-700 animate-pulse' : 'bg-gray-700'}`}>
+            Recording
+          </span>
+          <span className={`px-2 py-1 rounded ${recordedBlob ? 'bg-yellow-700' : 'bg-gray-700'}`}>
+            Saved
+          </span>
           <span className={`px-2 py-1 rounded ${status.sending ? 'bg-blue-700' : 'bg-gray-700'} `}>
             {status.sending ? 'Sending' : 'Sending'}
           </span>
@@ -542,17 +848,6 @@ export default function Home() {
             Responding
           </span>
         </div>
-
-        {/* Send */}
-        <button
-          className="mt-3 px-6 py-3 bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-500"
-          onClick={handleSendMessage}
-          disabled={loading || status.sending || status.thinking}
-        >
-          {loading || status.sending ? 'Sending...' : 'Send'}
-        </button>
-
-        <audio ref={audioRef} className="hidden" />
       </div>
 
       {/* Settings Drawer */}
