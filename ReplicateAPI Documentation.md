@@ -4,6 +4,26 @@ Model name: minimax/speech-02-turbo
 Model description: Text-to-Audio (T2A) that offers voice synthesis, emotional expression, and multilingual capabilities. Designed for real-time applications with low latency
 
 
+### Whisper STT (baseline)
+
+- Local route: [src/app/api/stt/route.ts](src/app/api/stt/route.ts)
+- Model reference and details: [whisperAPI.md](whisperAPI.md)
+- Model used: openai/whisper with input.model="large-v3"
+
+Accepted audio MIME types (validated in the local route):
+- audio/webm (webm/opus preferred)
+- audio/ogg (some devices label Opus as OGG)
+- audio/wav, audio/x-wav
+- audio/m4a, audio/x-m4a, audio/mp4
+
+Upload behavior:
+- The route first attempts `replicate.files.upload(...)` if available in the SDK, then falls back to a data URL (recommended for files <= 256KB). See details in [src/app/api/stt/route.ts](src/app/api/stt/route.ts).
+
+Example curl (matches README):
+
+```bash
+curl -X POST http://localhost:3000/api/stt -F "audio=@public/test.webm;type=audio/webm"
+```
 ## Model inputs
 
 - text (required): Text to convert to speech. Every character is 1 token. Maximum 5000 characters. Use <#x#> between words to control pause duration (0.01-99.99s). (string)

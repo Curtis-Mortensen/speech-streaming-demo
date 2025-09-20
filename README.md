@@ -1,42 +1,23 @@
 # Speech Streaming Demo
 
 An AI voice synthesis demo built with Next.js, featuring text-to-speech using Replicate API.
+For ongoing change history and the roadmap, see [dev_log.md](dev_log.md).
 
-## Development Stages
-
-### Stage 1A: Standalone TTS Engine
-- Build separate TTS engine module
-- Implement Replicate API integration
-- Add audio processing and file saving
-- Create CLI interface for testing
-- Test TTS pipeline independently
-- Benefits: Isolated testing, clear API boundaries, reusability
-
-### Stage 1B: Web Integration
-- Create Next.js API route for TTS
-- Build simple web UI with text input
-- Connect UI to TTS API
-- Test unified system
-
-### Stage 2: Chat Interface
-- Build chat UI around TTS functionality
-- Add message history and replay
-- Create new chats and open existing ones
-- Integrate with OpenAI for chat responses
+## Changelog & Roadmap
+See [dev_log.md](dev_log.md) for the canonical, dated changelog and upcoming plan.
 
 ## Features
 
-- Text-to-speech synthesis via Replicate API
-- Audio playback and local saving
-- Chat interface with message history
-- Multiple chat sessions
-- Audio replay for saved messages
+- Right-side, slide-in Settings drawer with overlay/scrim and ESC/overlay-to-close
+- Timestamp-based chat titles (automatic migration from legacy “New Chat” titles)
+- Event-driven mic indicator that lights during AI playback (based on HTMLAudioElement events)
+- Robust TTS workflow (Replicate-backed), with saved audio URLs for replay
 
 ## Architecture
 
 - **Frontend**: React with TypeScript, Tailwind CSS
 - **Backend**: Next.js API routes
-- **APIs**: Replicate for text-to-speech, OpenAI for chat (Stage 2)
+- **APIs**: Replicate for text-to-speech, OpenAI for chat
 - **Storage**: localStorage for chat and audio data
 
 ## Flow
@@ -52,7 +33,8 @@ An AI voice synthesis demo built with Next.js, featuring text-to-speech using Re
 - Simple input field with default text
 - Synthesize button
 - Audio player controls
-- Chat interface (Stage 2)
+- Chat interface
+- Right-side Settings drawer (slide-in) with overlay/scrim and ESC-to-close
 
 ## Getting Started
 
@@ -79,20 +61,13 @@ Open [http://localhost:3000](http://localhost:3000) with your browser.
 
 ## Usage
 
-### Stage 1
-1. Enter text in the input field
-2. Click "Synthesize" button
-3. Audio will play automatically
-4. Audio is saved locally
-
-### Stage 2 (Future)
-1. Send chat messages
-2. AI responds with text and speech
-3. Replay previous audio messages
-4. Switch between chat sessions
+1. Enter text in the input field or send a chat message.
+2. The system synthesizes speech via Replicate-backed TTS; audio plays automatically and is saved locally for replay.
+3. The mic indicator lights during AI playback; press ESC or click the overlay to close the Settings drawer.
+4. Replay previous audio messages and switch between chat sessions as needed.
 
 ## Dependencies
 
 - `replicate` for TTS API
-- `openai` for chat API (Stage 2)
+- `openai` for chat API
 - Next.js, React, TypeScript, Tailwind CSS
