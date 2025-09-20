@@ -380,3 +380,296 @@ const prediction = replicate.predictions.create({
   input
 });
 // { "id": "xyz123", "status": "starting", ... }
+
+
+
+# Replicate Documentation for Whisper Speech to Text
+## Basic model info
+
+Model name: openai/whisper
+Model description: Convert speech in audio to text
+
+
+## Model inputs
+
+- audio (required): Audio file (string)
+- transcription (optional): Choose the format for the transcription (string)
+- translate (optional): Translate the text to English when set to True (boolean)
+- language (optional): Language spoken in the audio, specify 'auto' for automatic language detection (string)
+- temperature (optional): temperature to use for sampling (number)
+- patience (optional): optional patience value to use in beam decoding, as in https://arxiv.org/abs/2204.05424, the default (1.0) is equivalent to conventional beam search (number)
+- suppress_tokens (optional): comma-separated list of token ids to suppress during sampling; '-1' will suppress most special characters except common punctuations (string)
+- initial_prompt (optional): optional text to provide as a prompt for the first window. (string)
+- condition_on_previous_text (optional): if True, provide the previous output of the model as a prompt for the next window; disabling may make the text inconsistent across windows, but the model becomes less prone to getting stuck in a failure loop (boolean)
+- temperature_increment_on_fallback (optional): temperature to increase when falling back when the decoding fails to meet either of the thresholds below (number)
+- compression_ratio_threshold (optional): if the gzip compression ratio is higher than this value, treat the decoding as failed (number)
+- logprob_threshold (optional): if the average log probability is lower than this value, treat the decoding as failed (number)
+- no_speech_threshold (optional): if the probability of the <|nospeech|> token is higher than this value AND the decoding has failed due to `logprob_threshold`, consider the segment as silence (number)
+
+
+## Model output schema
+
+{
+  "type": "object",
+  "title": "Output",
+  "required": [
+    "detected_language",
+    "transcription"
+  ],
+  "properties": {
+    "segments": {
+      "title": "Segments"
+    },
+    "srt_file": {
+      "type": "string",
+      "title": "Srt File",
+      "format": "uri"
+    },
+    "txt_file": {
+      "type": "string",
+      "title": "Txt File",
+      "format": "uri"
+    },
+    "translation": {
+      "type": "string",
+      "title": "Translation"
+    },
+    "transcription": {
+      "type": "string",
+      "title": "Transcription"
+    },
+    "detected_language": {
+      "type": "string",
+      "title": "Detected Language"
+    }
+  }
+}
+
+If the input or output schema includes a format of URI, it is referring to a file.
+
+
+## Example inputs and outputs
+
+Use these example outputs to better understand the types of inputs the model accepts, and the types of outputs the model returns:
+
+### Example (https://replicate.com/p/4bzv3trbxdeyon73ve6itzvycq)
+
+#### Input
+
+```json
+{
+  "audio": "https://replicate.delivery/mgxm/e5159b1b-508a-4be4-b892-e1eb47850bdc/OSR_uk_000_0050_8k.wav",
+  "model": "large-v3",
+  "translate": false,
+  "temperature": 0,
+  "transcription": "plain text",
+  "suppress_tokens": "-1",
+  "logprob_threshold": -1,
+  "no_speech_threshold": 0.6,
+  "condition_on_previous_text": true,
+  "compression_ratio_threshold": 2.4,
+  "temperature_increment_on_fallback": 0.2
+}
+```
+
+#### Output
+
+```json
+{
+  "segments": [
+    {
+      "id": 0,
+      "end": 18.6,
+      "seek": 0,
+      "text": " the little tales they tell are false the door was barred locked and bolted as well ripe pears are fit for a queen's table a big wet stain was on the round carpet",
+      "start": 0,
+      "tokens": [
+        50365,
+        264,
+        707,
+        27254,
+        436,
+        980,
+        366,
+        7908,
+        264,
+        2853,
+        390,
+        2159,
+        986,
+        9376,
+        293,
+        13436,
+        292,
+        382,
+        731,
+        31421,
+        520,
+        685,
+        366,
+        3318,
+        337,
+        257,
+        12206,
+        311,
+        3199,
+        257,
+        955,
+        6630,
+        16441,
+        390,
+        322,
+        264,
+        3098,
+        18119,
+        51295
+      ],
+      "avg_logprob": -0.060722851171726135,
+      "temperature": 0,
+      "no_speech_prob": 0.05907342955470085,
+      "compression_ratio": 1.412280701754386
+    },
+    {
+      "id": 1,
+      "end": 31.840000000000003,
+      "seek": 1860,
+      "text": " the kite dipped and swayed but stayed aloft the pleasant hours fly by much too soon the room was crowded with a mild wab",
+      "start": 18.6,
+      "tokens": [
+        50365,
+        264,
+        38867,
+        45162,
+        293,
+        27555,
+        292,
+        457,
+        9181,
+        419,
+        6750,
+        264,
+        16232,
+        2496,
+        3603,
+        538,
+        709,
+        886,
+        2321,
+        264,
+        1808,
+        390,
+        21634,
+        365,
+        257,
+        15154,
+        261,
+        455,
+        51027
+      ],
+      "avg_logprob": -0.1184891973223005,
+      "temperature": 0,
+      "no_speech_prob": 0.000253104604780674,
+      "compression_ratio": 1.696969696969697
+    },
+    {
+      "id": 4,
+      "end": 52.38,
+      "seek": 4860,
+      "text": " the beetle droned in the hot june sun",
+      "start": 48.6,
+      "tokens": [
+        50365,
+        264,
+        49735,
+        1224,
+        19009,
+        294,
+        264,
+        2368,
+        361,
+        2613,
+        3295,
+        50554
+      ],
+      "avg_logprob": -0.30115177081181455,
+      "temperature": 0.2,
+      "no_speech_prob": 0.292143315076828,
+      "compression_ratio": 0.8409090909090909
+    }
+  ],
+  "translation": null,
+  "transcription": " the little tales they tell are false the door was barred locked and bolted as well ripe pears are fit for a queen's table a big wet stain was on the round carpet the kite dipped and swayed but stayed aloft the pleasant hours fly by much too soon the room was crowded with a mild wab the room was crowded with a wild mob this strong arm shall shield your honour she blushed when he gave her a white orchid the beetle droned in the hot june sun the beetle droned in the hot june sun",
+  "detected_language": "english"
+}
+```
+
+### Example (https://replicate.com/p/dwt7py202drga0cgw1yt8qkb90)
+
+#### Input
+
+```json
+{
+  "audio": "https://replicate.delivery/pbxt/LJr3aqYueyyKOKkIwWWIH67SyvzrAKfCm5tNVYc3uSt7oWy4/4th-dimension-explained-by-a-high-school-student.mp3",
+  "model": "large-v3",
+  "language": "auto",
+  "translate": false,
+  "temperature": 0,
+  "transcription": "plain text",
+  "suppress_tokens": "-1",
+  "logprob_threshold": -1,
+  "no_speech_threshold": 0.6,
+  "condition_on_previous_text": true,
+  "compression_ratio_threshold": 2.4,
+  "temperature_increment_on_fallback": 0.2
+}
+```
+
+# Incredibly Fast Whisper API Documentation
+## Basic model info
+
+Model name: vaibhavs10/incredibly-fast-whisper
+Model description: whisper-large-v3, incredibly fast, powered by Hugging Face Transformers! 🤗
+
+
+## Model inputs
+
+- audio (required): Audio file (string)
+- task (optional): Task to perform: transcribe or translate to another language. (string)
+- language (optional): Language spoken in the audio, specify 'None' to perform language detection. (string)
+- batch_size (optional): Number of parallel batches you want to compute. Reduce if you face OOMs. (integer)
+- timestamp (optional): Whisper supports both chunked as well as word level timestamps. (string)
+- diarise_audio (optional): Use Pyannote.audio to diarise the audio clips. You will need to provide hf_token below too. (boolean)
+- hf_token (optional): Provide a hf.co/settings/token for Pyannote.audio to diarise the audio clips. You need to agree to the terms in 'https://huggingface.co/pyannote/speaker-diarization-3.1' and 'https://huggingface.co/pyannote/segmentation-3.0' first. (string)
+
+
+## Model output schema
+
+{
+  "title": "Output"
+}
+
+If the input or output schema includes a format of URI, it is referring to a file.
+
+
+## Example inputs and outputs
+
+Use these example outputs to better understand the types of inputs the model accepts, and the types of outputs the model returns:
+
+### Example (https://replicate.com/p/vplzxotbmrsqbd7hsbehoaugaa)
+
+#### Input
+
+```json
+{
+  "task": "transcribe",
+  "audio": "https://replicate.delivery/pbxt/Js23CcyeLEntZWRsPsAVcfXZLMX11DeRtozHMs1ecC8JRph9/sam_altman_lex_podcast_367.flac",
+  "batch_size": 64,
+  "return_timestamps": true
+}
+```
+
+#### Output
+
+```json
+{
+  "text": " We have been a misunderstood and badly mocked org for a long time. When we started, we announced the org at the end of 2015 and said we were going to work on AGI. People thought we were batshit insane. I remember at the time, an eminent AI scientist at a large industrial AI lab was like DMing individual reporters being like, you know, these people aren't very good and it's ridiculous to talk about AGI and I can't believe you're giving them time of day. And it's like, that was the level of like pettiness and rancor in the field at a new group of people saying we're going to try to build AGI. So OpenAI and DeepMind was a small collection of folks who were brave enough to talk about AGI in the face of mockery. We don't get mocked as much now. Don't get mocked as much now. of OpenAI, the company behind GPT-4, JAD-GPT, DALI, Codex, and many other AI technologies, which both individually and together constitute some of the greatest breakthroughs in the history of artificial intelligence, computing, and humanity in general. Please allow me to say a few words about the possibilities and the dangers of AI in this current moment in the history of human civilization. I believe it is a critical moment. We stand on the precipice of fundamental societal transformation, where soon, nobody knows when, but many, including me, believe it's within our lifetime. The collective intelligence of the human species begins to pale in comparison, intelligence of the human species begins to pale in comparison, by many orders of magnitude, to the general superintelligence in the AI systems we build and deploy at scale. This is both exciting and terrifying.

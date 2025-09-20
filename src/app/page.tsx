@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import Settings from './components/Settings';
+import { SettingsSpecV1, DEFAULT_SETTINGS_V1, clampSettingsToSpec } from '../types/settings';
 
 interface Message {
   text: string;
@@ -14,12 +16,6 @@ interface Chat {
     messages: Message[];
 }
 
-interface SettingsType {
-  systemPrompt: string;
-  speed: number;
-  pitch: number;
-}
-
 export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
@@ -30,13 +26,13 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentPlayingUrl, setCurrentPlayingUrl] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings] = useState<SettingsType>({
-    systemPrompt: '',
-    speed: 1,
-    pitch: 0
-  });
+
+  // Versioned settings state
+  const [settings, setSettings] = useState<SettingsSpecV1>(DEFAULT_SETTINGS_V1);
+
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  // Load chats
   useEffect(() => {
     const savedChats = localStorage.getItem('chats');
     if (savedChats) {
@@ -48,14 +44,63 @@ export default function Home() {
     }
   }, []);
 
+  // Persist chats
   useEffect(() => {
     localStorage.setItem('chats', JSON.stringify(chats));
   }, [chats]);
 
+  // Current messages per selected chat
   useEffect(() => {
     const chat = chats.find(c => c.id === currentChatId);
     setCurrentMessages(chat ? chat.messages : []);
   }, [currentChatId, chats]);
+
+  // Load versioned settings and migrate legacy if needed
+  useEffect(() => {
+    try {
+      const v1 = localStorage.getItem('settings.v1');
+      if (v1) {
+        const parsed = JSON.parse(v1);
+        const clamped = clampSettingsToSpec(parsed);
+        setSettings(clamped);
+        return;
+      }
+    } catch {
+      // ignore parse errors
+    }
+
+    // Attempt legacy migration from 'settings' with { systemPrompt, speed, pitch }
+    try {
+      const legacyStr = localStorage.getItem('settings');
+      if (legacyStr) {
+        const legacy = JSON.parse(legacyStr) || {};
+        const hasAny =
+          typeof legacy.systemPrompt === 'string' ||
+          typeof legacy.speed === 'number' ||
+          typeof legacy.pitch === 'number';
+        if (hasAny) {
+          const migrated = clampSettingsToSpec({
+            ...DEFAULT_SETTINGS_V1,
+            systemPrompt: typeof legacy.systemPrompt === 'string' ? legacy.systemPrompt : DEFAULT_SETTINGS_V1.systemPrompt,
+            speed: typeof legacy.speed === 'number' ? legacy.speed : DEFAULT_SETTINGS_V1.speed,
+            pitch: typeof legacy.pitch === 'number' ? legacy.pitch : DEFAULT_SETTINGS_V1.pitch,
+          });
+          setSettings(migrated);
+          try {
+            localStorage.setItem('settings.v1', JSON.stringify(migrated));
+          } catch {
+            // ignore
+          }
+          return;
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+
+    // Fallback to defaults if nothing else found
+    setSettings(DEFAULT_SETTINGS_V1);
+  }, []);
 
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
@@ -75,12 +120,17 @@ export default function Home() {
     setCurrentMessages(prev => [...prev, userMessage]);
 
     try {
+      const chatMessagesForRequest = [
+        ...currentMessages.map(m => ({ role: m.isUser ? 'user' : 'assistant', content: m.text })),
+        { role: 'user', content: currentInputText }
+      ];
+
       const chatResponse = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: currentInputText, settings }),
+        body: JSON.stringify({ messages: chatMessagesForRequest, settings }),
       });
 
       if (!chatResponse.ok) {
@@ -101,8 +151,7 @@ export default function Home() {
         throw new Error('Failed to synthesize audio');
       }
 
-      const blob = await ttsResponse.blob();
-      const url = URL.createObjectURL(blob);
+      const { url } = await ttsResponse.json();
       
       const aiMessage: Message = { text: aiResponse, isUser: false, audioUrl: url };
       setCurrentMessages(prev => [...prev, aiMessage]);
@@ -161,10 +210,53 @@ export default function Home() {
     setInputText('');
   };
 
-  const handleSettingsChange = (newSettings: SettingsType) => {
-    setSettings(newSettings);
+  // Controlled Settings onChange: clamp and persist
+  const handleSettingsChange = (next: SettingsSpecV1) => {
+    const clamped = clampSettingsToSpec(next);
+    setSettings(clamped);
+    try {
+      localStorage.setItem('settings.v1', JSON.stringify(clamped));
+    } catch {
+      // ignore quota errors
+    }
   };
+  
+  const handleResynthesize = async (messageIndex: number) => {
+    const msg = currentMessages[messageIndex];
+    if (!msg) return;
+    try {
+      const ttsResponse = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: msg.text, settings }),
+      });
+      if (!ttsResponse.ok) {
+        throw new Error('Failed to re-synthesize audio');
+      }
+      const { url } = await ttsResponse.json();
 
+      setCurrentMessages(prev =>
+        prev.map((m, i) => (i === messageIndex ? { ...m, audioUrl: url } : m))
+      );
+
+      setChats(prev => {
+        if (!currentChatId) return prev;
+        return prev.map(chat =>
+          chat.id === currentChatId
+            ? {
+                ...chat,
+                messages: chat.messages.map((m, i) =>
+                  i === messageIndex ? { ...m, audioUrl: url } : m
+                ),
+              }
+            : chat
+        );
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+  
   return (
     <div className="bg-gray-900 text-white min-h-screen flex">
         <div className="w-64 bg-gray-800 p-4 flex flex-col">
@@ -219,13 +311,27 @@ export default function Home() {
                     {message.text}
                   </div>
                   {!message.isUser && message.audioUrl && (
-                    <button onClick={() => togglePlayPause(message.audioUrl!)} className="ml-2 p-2 bg-gray-700 rounded-full hover:bg-gray-600">
-                        {isPlaying && currentPlayingUrl === message.audioUrl ? (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        )}
-                    </button>
+                    message.audioUrl.startsWith('blob:') ? (
+                      <div className="ml-2 flex items-center gap-2">
+                        <span className="text-xs px-2 py-1 bg-yellow-700/30 border border-yellow-600 text-yellow-200 rounded">
+                          Audio unavailable (legacy)
+                        </span>
+                        <button
+                          onClick={() => handleResynthesize(index)}
+                          className="px-2 py-1 bg-yellow-600 rounded hover:bg-yellow-500 text-sm"
+                        >
+                          Re-synthesize
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={() => togglePlayPause(message.audioUrl!)} className="ml-2 p-2 bg-gray-700 rounded-full hover:bg-gray-600">
+                          {isPlaying && currentPlayingUrl === message.audioUrl ? (
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          ) : (
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          )}
+                      </button>
+                    )
                   )}
                 </div>
               ))}
@@ -254,54 +360,14 @@ export default function Home() {
         )}
           <audio ref={audioRef} className="hidden" />
       </div>
-      {showSettings && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 p-6 rounded-lg w-full max-w-md">
-            <h2 className="text-2xl font-bold mb-4">Settings</h2>
-            <div className="mb-4">
-              <label className="block mb-2">System Prompt</label>
-              <textarea
-                className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                rows={3}
-                value={settings.systemPrompt}
-                onChange={(e) => setSettings({...settings, systemPrompt: e.target.value})}
-              />
-            </div>
-            <div className="mb-4">
-              <label className="block mb-2">Speed: {settings.speed}</label>
-              <input
-                type="range"
-                min="0.5"
-                max="2"
-                step="0.1"
-                value={settings.speed}
-                onChange={(e) => setSettings({...settings, speed: parseFloat(e.target.value)})}
-                className="w-full"
-              />
-            </div>
-            <div className="mb-4">
-              <label className="block mb-2">Pitch: {settings.pitch}</label>
-              <input
-                type="range"
-                min="-1"
-                max="1"
-                step="0.1"
-                value={settings.pitch}
-                onChange={(e) => setSettings({...settings, pitch: parseFloat(e.target.value)})}
-                className="w-full"
-              />
-            </div>
-            <div className="flex justify-end">
-              <button
-                onClick={() => setShowSettings(false)}
-                className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
+      {/* Controlled Settings modal */}
+      <Settings
+        settings={settings}
+        onChange={handleSettingsChange}
+        show={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
     </div>
   );
 }

@@ -8,25 +8,32 @@ const openai = new OpenAI({
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, settings } = await req.json();
+    const { messages, settings }: { messages?: ChatCompletionMessageParam[]; settings?: { systemPrompt?: string } } = await req.json();
 
-    if (!message) {
-      return new NextResponse('Missing message', { status: 400 });
+    if (!Array.isArray(messages)) {
+      return new NextResponse('Missing messages', { status: 400 });
     }
 
-    // Prepare messages array with system prompt if provided
-    const messages: ChatCompletionMessageParam[] = [];
-    if (settings?.systemPrompt) {
-      messages.push({ role: 'system', content: settings.systemPrompt });
+    const systemPrompt = typeof settings?.systemPrompt === 'string' ? settings.systemPrompt.trim() : '';
+
+    const finalMessages: ChatCompletionMessageParam[] = [];
+    if (systemPrompt.length > 0) {
+      finalMessages.push({ role: 'system', content: systemPrompt });
     }
-    messages.push({ role: 'user', content: message });
+
+    // Only include user/assistant messages from client payload
+    for (const m of messages) {
+      if (m && (m.role === 'user' || m.role === 'assistant') && typeof (m as any).content === 'string') {
+        finalMessages.push({ role: m.role, content: (m as any).content });
+      }
+    }
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
-      messages: messages,
+      messages: finalMessages,
     });
 
-    const response = completion.choices[0].message.content;
+    const response = completion.choices[0]?.message?.content ?? '';
 
     return NextResponse.json({ response });
   } catch (error) {
