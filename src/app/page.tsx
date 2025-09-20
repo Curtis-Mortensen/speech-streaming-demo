@@ -238,7 +238,7 @@ export default function Home() {
   const sendTextToAI = async (userText: string) => {
     if (!userText.trim()) return;
 
-    setStatus({ sending: true, sent: false, thinking: true, responding: false, recording: false, saved: false });
+    setStatus({ sending: true, sent: false, thinking: true, responding: false });
 
     setLoading(true);
     const { chatId, newChat } = ensureChatId();
@@ -250,13 +250,14 @@ export default function Home() {
     try {
       const chatMessagesForRequest = [
         ...currentMessages.map(m => ({ role: m.isUser ? 'user' : 'assistant', content: m.text })),
-        { role: 'user', content: userText }
+        { role: 'user', content: currentInputText }
       ];
 
       const chatResponse = await fetch('/api/chat', {
         method: 'POST',
+        // In the merge, I prefered the voice text implimentation but the original was messages:chatMessagesForRequest, settings
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: chatMessagesForRequest, settings }),
+        body: JSON.stringify({ message: userText, settings }),
       });
       if (!chatResponse.ok) throw new Error('Failed to get chat response');
 
@@ -279,7 +280,8 @@ export default function Home() {
       });
       if (!ttsResponse.ok) throw new Error('Failed to synthesize audio');
 
-      const { url } = await ttsResponse.json();
+      const blob = await ttsResponse.blob();
+      const url = URL.createObjectURL(blob);
 
       const aiMessage: Message = { text: aiResponse, isUser: false, audioUrl: url };
       setCurrentMessages((prev) => [...prev, aiMessage]);
@@ -301,7 +303,9 @@ export default function Home() {
 
       // Attempt autoplay
       if (audioRef.current) {
-        playAudioUrl(url);
+        audioRef.current.src = url;
+        audioRef.current.play().catch(() => {});
+        setCurrentPlayingUrl(url);
         // isPlaying and responding will be toggled by the 'playing' event listener
       }
     } catch (err) {
@@ -462,7 +466,7 @@ export default function Home() {
       setLastRecordingUrl(null);
       setLastTranscript(null);
       setStatusMessage('Re-recording…');
-      setStatus(s => ({ ...s, saved: false, recording: false }));
+      setStatus(s => ({ ...s, saved: false }));
       await startRecording();
     } else {
       await startRecording();
@@ -629,7 +633,7 @@ export default function Home() {
   // Reset 'sent' when both thinking and responding are false
   useEffect(() => {
     if (status.sent && !status.thinking && !status.responding) {
-      setStatus(s => ({ ...s, sent: false, recording: false, saved: false }));
+      setStatus(s => ({ ...s, sent: false }));
     }
   }, [status.sent, status.thinking, status.responding]);
   
@@ -823,8 +827,6 @@ export default function Home() {
           onSendFromControls={onSendFromControls}
           statusMessage={statusMessage}
         />
-
-        <audio ref={audioRef} className="hidden" />
 
         <div className="w-full max-w-lg mt-2 flex flex-wrap items-center gap-2 text-xs">
           <span className={`px-2 py-1 rounded ${isRecording ? 'bg-red-700 animate-pulse' : 'bg-gray-700'}`}>
