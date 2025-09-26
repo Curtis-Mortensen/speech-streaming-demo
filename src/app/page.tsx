@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Settings from './components/Settings';
 import { SettingsSpecV1, DEFAULT_SETTINGS_V1, clampSettingsToSpec } from '../types/settings';
 import ControlBar from './components/ControlBar';
+import SignInModal from './components/SignInModal';
 
 // Helper: format chat title as "HH:mm DD-MM-YY"
 function formatChatTitle(date: Date) {
@@ -41,8 +42,10 @@ export default function Home() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentPlayingUrl, setCurrentPlayingUrl] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showSignIn, setShowSignIn] = useState(false);
   // Ref to Settings trigger for focus restore on close
   const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const signInTriggerRef = useRef<HTMLButtonElement | null>(null);
   const prevShowSettingsRef = useRef<boolean>(showSettings);
 
   // Multi-stage status
@@ -128,6 +131,11 @@ export default function Home() {
     }
     prevShowSettingsRef.current = showSettings;
   }, [showSettings]);
+
+  // Restore focus to Sign in trigger when modal closes
+  useEffect(() => {
+    // noop here; focus is restored in modal's cleanup, but keep hook to align with pattern
+  }, [showSignIn]);
 
   // Current messages per selected chat
   useEffect(() => {
@@ -727,13 +735,23 @@ export default function Home() {
           {!showTranscript && (
             <h1 className="text-4xl font-bold mb-4 text-center">Speech Streaming Demo</h1>
           )}
-          <button
-            ref={settingsTriggerRef}
-            onClick={() => setShowSettings(!showSettings)}
-            className="absolute right-0 top-0 px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
-          >
-            {showSettings ? 'Hide Settings' : 'Show Settings'}
-          </button>
+          <div className="absolute right-0 top-0 flex gap-2">
+            <button
+              ref={signInTriggerRef}
+              onClick={() => setShowSignIn(true)}
+              aria-label="Open sign in"
+              className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700"
+            >
+              Sign in
+            </button>
+            <button
+              ref={settingsTriggerRef}
+              onClick={() => setShowSettings(!showSettings)}
+              className="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
+            >
+              {showSettings ? 'Hide Settings' : 'Show Settings'}
+            </button>
+          </div>
         </div>
         <div className="mb-3 flex items-center justify-center">
           <span
@@ -870,6 +888,9 @@ export default function Home() {
         show={showSettings}
         onClose={() => setShowSettings(false)}
       />
+
+      {/* Sign In Modal */}
+      <SignInModal isOpen={showSignIn} onClose={() => setShowSignIn(false)} />
     </div>
   );
 }
