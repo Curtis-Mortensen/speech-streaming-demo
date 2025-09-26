@@ -13,7 +13,8 @@ type ControlBarProps = {
   onMicClick: () => void | Promise<void>;
   canSendFromControls: boolean;
   loading: boolean;
-  onSendFromControls: () => void | Promise<void>;
+  onSendFromControls: (text: string) => void | Promise<void>;
+  onInputChange: (value: string) => void;
   statusMessage: string | null;
 };
 
@@ -37,6 +38,7 @@ export default function ControlBar(props: ControlBarProps) {
     canSendFromControls,
     loading,
     onSendFromControls,
+    onInputChange,
     statusMessage,
   } = props;
 
@@ -76,7 +78,11 @@ export default function ControlBar(props: ControlBarProps) {
                 id="text-mode-input"
                 rows={1}
                 value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
+                onChange={(e) => {
+                  const { value } = e.target;
+                  setTextInput(value);
+                  onInputChange(value);
+                }}
                 onKeyDown={handleTextKeyDown}
                 className="w-full p-2 bg-gray-800 border border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 placeholder="Type a message… (Enter to send, Shift+Enter newline, Esc to collapse)"
@@ -112,7 +118,7 @@ export default function ControlBar(props: ControlBarProps) {
         <div className="flex-none ml-auto">
           <button
             type="button"
-            onClick={onSendFromControls}
+            onClick={() => onSendFromControls(textInput)}
             disabled={!canSendFromControls || loading}
             className="px-4 py-2 bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-500 transition-colors duration-200"
           >

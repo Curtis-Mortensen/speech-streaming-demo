@@ -61,6 +61,10 @@ export default function Home() {
   // New voice-first controls state
   const [textModeEnabled, setTextModeEnabled] = useState(false); // collapsed by default (voice-first)
   const [textInput, setTextInput] = useState(''); // separate text input for the compact bar
+  const textInputRef = useRef<string>('');
+  useEffect(() => {
+    textInputRef.current = textInput;
+  }, [textInput]);
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorderOrNull>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -235,29 +239,30 @@ export default function Home() {
   };
 
   // Unified send (text - either from text mode or from STT transcript)
-  const sendTextToAI = async (userText: string) => {
-    if (!userText.trim()) return;
+  const sendTextToAI = async (text: string) => {
+    const trimmedText = text.trim();
+    if (!trimmedText) return;
 
-    setStatus({ sending: true, sent: false, thinking: true, responding: false });
+    setStatus((prev) => ({ ...prev, sending: true, sent: false, thinking: true, responding: false }));
 
     setLoading(true);
     const { chatId, newChat } = ensureChatId();
 
-    const userMessage: Message = { text: userText, isUser: true };
+    const userMessage: Message = { text: trimmedText, isUser: true };
     // Update current message list optimistically
     setCurrentMessages((prev) => [...prev, userMessage]);
 
     try {
       const chatMessagesForRequest = [
-        ...currentMessages.map(m => ({ role: m.isUser ? 'user' : 'assistant', content: m.text })),
-        { role: 'user', content: currentInputText }
+        ...currentMessages.map((m) => ({ role: m.isUser ? 'user' : 'assistant', content: m.text })),
+        { role: 'user', content: trimmedText },
       ];
 
       const chatResponse = await fetch('/api/chat', {
         method: 'POST',
         // In the merge, I prefered the voice text implimentation but the original was messages:chatMessagesForRequest, settings
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userText, settings }),
+        body: JSON.stringify({ message: trimmedText, settings }),
       });
       if (!chatResponse.ok) throw new Error('Failed to get chat response');
 
@@ -330,10 +335,12 @@ export default function Home() {
   const handleTextKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (textInput.trim()) {
-        const toSend = textInput;
+      const currentText = textInputRef.current ?? textInput;
+      const trimmedText = currentText.trim();
+      if (trimmedText) {
         setTextInput('');
-        sendTextToAI(toSend);
+        textInputRef.current = '';
+        sendTextToAI(trimmedText);
       }
     } else if (e.key === 'Escape') {
       setTextModeEnabled(false);
@@ -475,19 +482,22 @@ export default function Home() {
 
   const canSendFromControls = useMemo(() => {
     if (textModeEnabled) {
-      return !!textInput.trim();
+      const currentText = (textInputRef.current ?? textInput).trim();
+      return currentText.length > 0;
     }
     // Voice-first: allow Send when we have a recorded blob ready,
     // or when there's a transcript present (edge case).
     return !!recordedBlob || !!(lastTranscript && lastTranscript.trim());
   }, [textModeEnabled, textInput, recordedBlob, lastTranscript]);
 
-  const onSendFromControls = async () => {
+  const onSendFromControls = async (textFromControls: string) => {
     if (!canSendFromControls) return;
     if (textModeEnabled) {
-      const toSend = textInput.trim();
+      const trimmedText = (textInputRef.current ?? textFromControls ?? '').trim();
+      if (!trimmedText) return;
       setTextInput('');
-      await sendTextToAI(toSend);
+      textInputRef.current = '';
+      await sendTextToAI(trimmedText);
     } else {
       // Voice-first flow
       if (recordedBlob) {
@@ -825,6 +835,9 @@ export default function Home() {
           canSendFromControls={canSendFromControls}
           loading={loading}
           onSendFromControls={onSendFromControls}
+          onInputChange={(value) => {
+            textInputRef.current = value;
+          }}
           statusMessage={statusMessage}
         />
 
